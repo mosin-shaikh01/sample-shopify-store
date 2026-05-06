@@ -1,0 +1,93 @@
+name: Manual Deploy to Shopify Dev Theme
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "DEPLOY" to confirm deployment'
+        required: true
+        default: ''
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate deployment confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "DEPLOY" ]; then
+            echo "❌ Deployment aborted: confirmation not provided"
+            echo "Please enter 'DEPLOY' to confirm"
+            exit 1
+          fi
+          echo "✓ Deployment confirmed by user"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Shopify CLI
+        run: npm install -g @shopify/cli @shopify/theme
+
+      - name: Validate Theme Access credentials
+        env:
+          SHOPIFY_FLAG_STORE: ${{ secrets.SHOPIFY_STORE }}
+          SHOPIFY_CLI_THEME_TOKEN: ${{ secrets.SHOPIFY_THEME_PASSWORD }}
+        run: |
+          if [ -z "$SHOPIFY_FLAG_STORE" ] || [ -z "$SHOPIFY_CLI_THEME_TOKEN" ]; then
+            echo "❌ Missing required secrets: SHOPIFY_STORE or SHOPIFY_THEME_PASSWORD"
+            exit 1
+          fi
+          echo "✓ Theme Access credentials loaded"
+
+      - name: Deploy to Shopify Development Theme
+        env:
+          SHOPIFY_FLAG_STORE: ${{ secrets.SHOPIFY_STORE }}
+          SHOPIFY_CLI_THEME_TOKEN: ${{ secrets.SHOPIFY_THEME_PASSWORD }}
+          THEME_ID: ${{ secrets.SHOPIFY_THEME_ID }}
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🚀 Starting deployment to Shopify development theme"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Store: $SHOPIFY_FLAG_STORE"
+          echo "Theme ID: $THEME_ID"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          shopify theme push \
+            --store $SHOPIFY_FLAG_STORE \
+            --theme $THEME_ID \
+            --nodelete \
+            --ignore config/settings_data.json
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✓ Deployment completed successfully"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+      - name: Display preview URL
+        env:
+          SHOPIFY_STORE: ${{ secrets.SHOPIFY_STORE }}
+          THEME_ID: ${{ secrets.SHOPIFY_THEME_ID }}
+        run: |
+          STORE_URL=$(echo "$SHOPIFY_STORE" | sed 's/\.myshopify\.com//')
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📋 THEME PREVIEW INFORMATION"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Preview URL:"
+          echo "https://$SHOPIFY_STORE/cdn/shop/t/$THEME_ID/preview"
+          echo ""
+          echo "Theme Editor:"
+          echo "https://$SHOPIFY_STORE/admin/themes/$THEME_ID/editor"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+      - name: Deployment failed
+        if: failure()
+        run: |
+          echo "❌ Deployment failed"
+          echo "Check the logs above for errors"
+          exit 1
